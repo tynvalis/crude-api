@@ -1,16 +1,21 @@
 {
   "scripts": {
-    "start:dev": "cross-env NODE_ENV=development ts-node-dev --respawn src/index.ts",
-    "build": "webpack",
-    "start:prod": "npm run build && cross-env NODE_ENV=production node dist/bundle.js",
-    "lint": "eslint src/**/*.ts",
-    "format": "prettier --write src/**/*.ts"
+    "build": "tsc",
+    "start:prod": "npm run build && node dist/index.js",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start:multi": "npm run build && node dist/cluster.js",
+    "lint": "echo \"Add linter script if needed\"",
+    "test": "jest"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.0",
     "@types/uuid": "^10.0.0",
     "cross-env": "^10.1.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.10",
+    "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"

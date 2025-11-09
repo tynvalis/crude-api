@@ -2,7 +2,7 @@ import http from "http";
 import dotenv from "dotenv";
 import { handleRequest } from "./routes/userRoutes";
 
-dotenv.config();
+dotenv.config({ debug: false });
 
 const PORT = process.env.PORT ?? "4000";
 
