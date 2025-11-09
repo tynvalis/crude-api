@@ -1,88 +1,120 @@
-import cluster from "cluster";
-import os from "os";
-import http from "http";
-import dotenv from "dotenv";
-import { handleRequest } from "./routes/userRoutes";
-import { User } from "./utils/user.interface";
+import cluster, { Worker } from 'cluster';
+import os from 'os';
+import http from 'http';
+import dotenv from 'dotenv';
+import { handleRequest } from './routes/userRoutes';
 
-
-if (!cluster.isPrimary && !process.env.WORKER_PORT) {
-  console.error("only via master process.");
-  process.exit(1);
-}
 dotenv.config({ debug: false });
 
-const PORT = parseInt(process.env.PORT ?? "4000", 10);
+const PORT = parseInt(process.env.PORT ?? '4000', 10);
 
 if (cluster.isPrimary) {
+  console.log(`Master PID ${process.pid}. Starting workers...`);
+
   const cpuCount = os.availableParallelism();
   const workerCount = cpuCount - 1;
 
-  console.log(`Master PID ${process.pid}. Starting ${workerCount} workers`);
+  const workers: { worker: Worker; port: number }[] = [];
 
-  const users = new Map<string, User>();
-
-  const workers: any[] = [];
   for (let i = 1; i <= workerCount; i++) {
-    const worker = cluster.fork({ WORKER_PORT: PORT + i });
-    workers.push(worker);
+    const port = PORT + i;
+    const worker = cluster.fork({ WORKER_PORT: port });
+    workers.push({ worker, port });
+    console.log(`Worker PID ${worker.process.pid} will run on port ${port}`);
   }
 
-  let current = 0;
+  let currentWorker = 0;
 
   const balancer = http.createServer((req, res) => {
-    const targetWorker = workers[current];
-    current = (current + 1) % workers.length;
+    if (workers.length === 0) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'No workers available' }));
+    }
+
+    const target = workers[currentWorker];
+    currentWorker = (currentWorker + 1) % workers.length;
 
     const proxy = http.request(
-      { hostname: "localhost", port: targetWorker.process.env.WORKER_PORT, method: req.method, path: req.url, headers: req.headers },
+      {
+        hostname: 'localhost',
+        port: target.port,
+        method: req.method,
+        path: req.url,
+        headers: req.headers,
+      },
       (proxyRes) => {
         res.writeHead(proxyRes.statusCode ?? 500, proxyRes.headers);
-        proxyRes.pipe(res);
-      }
+        proxyRes.pipe(res, { end: true });
+      },
     );
 
-    req.pipe(proxy);
+    req.pipe(proxy, { end: true });
+
+    proxy.on('error', (err) => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          message: 'Worker request failed',
+          error: err.message,
+        }),
+      );
+    });
   });
 
   balancer.listen(PORT, () => {
     console.log(`Load balancer listening on http://localhost:${PORT}`);
   });
 
-  cluster.on("message", (worker, message: any) => {
+  const users = new Map<string, any>();
+
+  cluster.on('message', (worker, message: any) => {
     const { type, payload } = message;
 
-    if (type === "getAll") {
-      worker.send({ type: "getAll:response", data: Array.from(users.values()) });
-    }
-
-    if (type === "getById") {
-      worker.send({ type: "getById:response", data: users.get(payload.id) ?? null });
-    }
-
-    if (type === "create") {
-      users.set(payload.user.id, payload.user);
-      worker.send({ type: "create:response", data: payload.user });
-    }
-
-    if (type === "update") {
-      users.set(payload.id, payload.user);
-      worker.send({ type: "update:response", data: payload.user });
-    }
-
-    if (type === "delete") {
-      users.delete(payload.id);
-      worker.send({ type: "delete:response", data: null });
+    switch (type) {
+      case 'getAll':
+        worker.send({
+          type: 'getAll:response',
+          data: Array.from(users.values()),
+        });
+        break;
+      case 'getById':
+        worker.send({
+          type: 'getById:response',
+          data: users.get(payload.id) ?? null,
+        });
+        break;
+      case 'create':
+        users.set(payload.user.id, payload.user);
+        worker.send({ type: 'create:response', data: payload.user });
+        break;
+      case 'update':
+        users.set(payload.id, payload.user);
+        worker.send({ type: 'update:response', data: payload.user });
+        break;
+      case 'delete':
+        users.delete(payload.id);
+        worker.send({ type: 'delete:response', data: null });
+        break;
     }
   });
-
 } else {
-  const workerPort = parseInt(process.env.WORKER_PORT!, 10);
+  const WORKER_PORT = parseInt(process.env.WORKER_PORT!, 10);
 
   const server = http.createServer(async (req, res) => {
-    await handleRequest(req, res);
+    try {
+      await handleRequest(req, res);
+    } catch (err: any) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          message: 'Internal server error',
+          error: err.message,
+        }),
+      );
+    }
   });
-  server.listen(workerPort, () => {
-    console.log(`Worker PID ${process.pid} running on port ${workerPort}`);
+
+  server.listen(WORKER_PORT, () => {
+    console.log(`Worker PID ${process.pid} running on port ${WORKER_PORT}`);
   });
 }
