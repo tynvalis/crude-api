@@ -1,6 +1,13 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
-import { getAllUsers, getUserById } from '../controllers/userController';
+import {
+  getAllUsers,
+  getUserById,
+  createUser,
+  updateUser,
+  deleteUser,
+} from '../controllers/userController';
+import { parseJsonBody } from '../utils/httpHelpers';
 
 export async function handleRequest(
   req: IncomingMessage,
@@ -18,12 +25,29 @@ export async function handleRequest(
       return;
     }
 
+    if (pathname === '/api/users' && method === 'POST') {
+      const body = await parseJsonBody(req, res);
+      if (body === null) return;
+      await createUser(req, res, body);
+      return;
+    }
+
     const userIdMatch = pathname.match(/^\/api\/users\/([0-9a-fA-F-]{36})$/);
     if (userIdMatch) {
       const userId = userIdMatch[1];
 
       if (method === 'GET') {
         await getUserById(req, res, userId);
+        return;
+      }
+      if (method === 'PUT') {
+        const body = await parseJsonBody(req, res);
+        if (body === null) return;
+        await updateUser(req, res, userId, body);
+        return;
+      }
+      if (method === 'DELETE') {
+        await deleteUser(req, res, userId);
         return;
       }
     }
