@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "start:dev": "cross-env NODE_ENV=development ts-node-dev --respawn src/index.ts",
+    "build": "webpack",
+    "start:prod": "npm run build && cross-env NODE_ENV=production node dist/bundle.js",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts"
+  },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/uuid": "^10.0.0",
@@ -9,6 +16,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@types/dotenv": "^6.1.1",
+    "dotenv": "^17.2.3",
     "uuid": "^13.0.0"
   }
 }
